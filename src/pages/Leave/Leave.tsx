@@ -6,6 +6,7 @@ import dayjs from "dayjs"
 import { SearchOutlined, RedoOutlined } from '@ant-design/icons'
 import server from '../../utils/axios'
 import Flex from '../../components/Flex/Flex'
+import moment from "moment"
 
 interface IApplyStateMap {
   [key: number]: any
@@ -25,6 +26,7 @@ const applyStateMap: IApplyStateMap = {
   },
 }
 const leaveTypeOptions = [
+  { key: 0, value: '全部' },
   { key: 1, value: '事假' },
   { key: 2, value: '病假' },
   { key: 3, value: '产假' },
@@ -34,29 +36,32 @@ const Leave = () => {
   const [dataSource, setDataSource] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [form] = Form.useForm();
 
   const { RangePicker } = DatePicker;
 
-  const initialSearchParams = {
+  const [searchParams, setSearchParams] = useState({
     name: '', // 请假事由
-    leaveType: '', // 请假类型
-  }
-  const [searchParams, setSearchParams] = useState({ ...initialSearchParams })
+    leaveType: 0, // 请假类型
+  })
 
   // 搜索
-  const search = (isReset: boolean = false) => {
+  const search = () => {
     setLoading(true)
-    server.get('/leave/list').then(res => {
+    server.get('/leave/list', {
+      params: searchParams
+    }).then(res => {
       setDataSource(res.data)
       setLoading(false)
     })
   }
   // 重置搜索
   const reset = () => {
-    // isSearch = true
-    setSearchParams({ ...initialSearchParams })
-    search(true)
+    searchParams.name = ''
+    searchParams.leaveType = 0
+    search()
+    setSearchParams({ ...searchParams })
   }
   // 进来会先调用一次，然后依赖变更时再调用
   useEffect(() => {
@@ -119,11 +124,25 @@ const Leave = () => {
     setSearchParams({ ...searchParams })
   }
   const leaveTypeChange = (val: number) => {
-    // searchParams.leaveType = val
+    searchParams.leaveType = val
     setSearchParams({ ...searchParams })
   }
-  const handleOk = () => {
-    setIsModalVisible(false);
+  // 新增请假
+  const submit = () => {
+    form.validateFields().then(values => {
+      const params = {
+        reason: values.reason,
+        type: values.type,
+        startTime: moment(values.times[0]).format('YYYY-MM-DD HH:mm') + ':00',
+        endTime: moment(values.times[1]).format('YYYY-MM-DD HH:mm') + ':00',
+      }
+      server.post('/leave/add', params).then(() => {
+        setConfirmLoading(false)
+        form.resetFields()
+        setIsModalVisible(false)
+        search()
+      })
+    })
   };
 
   const handleCancel = () => {
@@ -151,7 +170,7 @@ const Leave = () => {
                 </Select>
               </Space>
             </div>
-            <Button loading={loading} type="primary" icon={<SearchOutlined />}>查询</Button>
+            <Button loading={loading} type="primary" icon={<SearchOutlined />} onClick={search}>查询</Button>
             <Button onClick={reset} icon={<RedoOutlined />}>重置</Button>
           </Space>
         </div>
@@ -165,17 +184,17 @@ const Leave = () => {
         </Flex>
         <Table dataSource={dataSource} columns={columns} loading={loading} rowKey="id" />
       </div>
-      <Modal title="请假" visible={isModalVisible} onOk={handleOk} onCancel={handleCancel}>
+      <Modal title="请假" visible={isModalVisible} onOk={submit} onCancel={handleCancel} confirmLoading={confirmLoading}>
         <Form form={form}>
           <Form.Item name="reason" label="请假原因" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="type" label="请假类型" rules={[{ required: true }]}>
             <Select placeholder="请选择请假类型">
-              {leaveTypeOptions.map(val => <Option value={val.key} key={val.key}>{val.value}</Option>)}
+              {leaveTypeOptions.slice(1).map(val => <Option value={val.key} key={val.key}>{val.value}</Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="type" label="请假类型" rules={[{ required: true }]}>
+          <Form.Item name="times" label="请假时长" rules={[{ required: true }]}>
             <RangePicker
               showTime={{ format: 'HH:mm' }}
               format="YYYY-MM-DD HH:mm"
